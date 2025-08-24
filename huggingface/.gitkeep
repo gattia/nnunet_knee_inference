@@ -1,0 +1,3 @@
+# This file ensures the huggingface/ directory is tracked in git
+# The actual deployment files (README.md, config.json) are in .gitignore
+# See README_HUGGINGFACE.md for information about the ignored files

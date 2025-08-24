@@ -1,0 +1,84 @@
+# HuggingFace mirror directory - ignore large files but keep structure
+huggingface/models/
+!huggingface/models/.gitkeep
+huggingface/test_data/
+!huggingface/test_data/.gitkeep
+huggingface/README.md
+huggingface/config.json
+# Keep the documentation about HuggingFace files (now at root)
+# HUGGINGFACE_SETUP.md is tracked at root level
+!huggingface/.gitkeep
+
+# Legacy models directory (remove this folder)
+models/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pth
+*.pt
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Logs
+*.log
+logs/
+
+# Large data files - too large for GitHub (stored on HuggingFace)
+*.nii.gz
+*.nrrd
+
+# Conda environments
+*.yaml.lock
