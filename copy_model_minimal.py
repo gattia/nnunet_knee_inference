@@ -7,13 +7,17 @@ Avoids copying huge prediction folders and unnecessary files.
 import os
 import shutil
 from pathlib import Path
+import json
+from datetime import datetime
 
-def copy_minimal_model_files(source_model_dir, dest_dir):
+
+def copy_minimal_model_files(source_model_dir, dest_dir, fold=1):
     """Copy only essential files for inference.
     
     Args:
         source_model_dir: Path to trained model directory 
         dest_dir: Destination directory for minimal model files
+        fold: Which fold to copy (default: 1, the best performing fold)
     """
     source_path = Path(source_model_dir)
     dest_path = Path(dest_dir)
@@ -28,8 +32,8 @@ def copy_minimal_model_files(source_model_dir, dest_dir):
     essential_files = [
         "plans.json",              # Model plans
         "dataset.json",            # Dataset info  
-        "fold_0/checkpoint_final.pth",  # Trained model weights (fold 0 only)
-        "fold_0/checkpoint_best.pth"    # Best checkpoint (if exists)
+        f"fold_{fold}/checkpoint_final.pth",  # Trained model weights
+        f"fold_{fold}/checkpoint_best.pth"    # Best checkpoint (if exists)
     ]
     
     # Optional files (copy if they exist)
@@ -85,10 +89,51 @@ def copy_minimal_model_files(source_model_dir, dest_dir):
     
     return copied_files, skipped_files
 
-def copy_lowres_for_cascade():
-    """Copy and rename lowres model for cascade compatibility."""
-    # Source: your trained lowres with 250epochs  
-    source_lowres = Path(os.environ.get('nnUNet_results', '')) / "Dataset500_KneeMRI" / "nnUNetTrainer_250epochs__nnUNetResEncUNetMPlans__3d_lowres"
+def create_model_config(dest_dir, fold, stage_name):
+    """Create a config file with model metadata."""
+    # Validation performance for each fold (from 5-fold CV results)
+    
+    config = {
+        'model_info': {
+            'fold': fold,
+            'stage': stage_name,
+            'architecture': 'nnUNet ResEnc (Residual Encoder)',
+            'configuration': '3d_cascade_fullres' if stage_name == 'cascade' else '3d_lowres',
+            'planner': 'nnUNetResEncUNetMPlans'
+        },
+        'deployment': {
+            'copied_date': datetime.now().isoformat(),
+        },
+        'labels': {
+            '0': 'background',
+            '1': 'patellar_cartilage',
+            '2': 'femoral_cartilage',
+            '3': 'medial_tibial_cartilage',
+            '4': 'lateral_tibial_cartilage',
+            '5': 'medial_meniscus',
+            '6': 'lateral_meniscus',
+            '7': 'femur_bone',
+            '8': 'tibia_bone',
+            '9': 'patella_bone'
+        }
+    }
+    
+    config_file = dest_dir / 'model_config.json'
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    print(f"  📄 Created model_config.json")
+    return config_file
+
+def copy_lowres_for_cascade(fold=1):
+    """Copy lowres model for cascade compatibility."""
+    # Source: your trained lowres (standard trainer)
+    nnunet_results = os.environ.get('nnUNet_results', '')
+    if not nnunet_results:
+        # Use the default path
+        nnunet_results = "/dataNAS/people/aagatti/projects/knee_pipeline_nnunet/nnunet_data/nnUNet_results"
+    
+    source_lowres = Path(nnunet_results) / "Dataset500_KneeMRI" / "nnUNetTrainer__nnUNetResEncUNetMPlans__3d_lowres"
     
     # Destination: standard naming for cascade compatibility
     dest_lowres = Path("./huggingface/models/Dataset500_KneeMRI/nnUNetTrainer__nnUNetResEncUNetMPlans__3d_lowres")
@@ -97,24 +142,20 @@ def copy_lowres_for_cascade():
         print(f"⚠️  Lowres model not found at: {source_lowres}")
         return False
     
-    print(f"🔄 Creating lowres symlink for cascade compatibility...")
+    print(f"🔄 Copying lowres model (fold {fold}) for cascade compatibility...")
     
-    # Create the destination directory
-    dest_lowres.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Remove existing if present
-    if dest_lowres.exists():
-        if dest_lowres.is_symlink():
-            dest_lowres.unlink()
-        else:
-            import shutil
-            shutil.rmtree(dest_lowres)
-    
-    # Create symlink to the 250epochs version
-    dest_lowres.symlink_to(source_lowres.absolute())
-    
-    print(f"✅ Lowres symlink created: {dest_lowres} -> {source_lowres}")
-    return True
+    # Copy using the same function
+    try:
+        copied, skipped = copy_minimal_model_files(source_lowres, dest_lowres, fold=fold)
+        
+        # Create config file for lowres
+        create_model_config(dest_lowres, fold, 'lowres')
+        
+        print(f"✅ Lowres model copied: {dest_lowres}")
+        return True
+    except Exception as e:
+        print(f"❌ Error copying lowres: {e}")
+        return False
 
 def main():
     """Main function with command line interface."""
@@ -125,14 +166,16 @@ def main():
                        help="Source model directory (default: your cascade fullres model)")
     parser.add_argument("--dest", 
                        help="Destination directory (default: ./huggingface/models/Dataset500_KneeMRI/nnUNetTrainer__nnUNetResEncUNetMPlans__3d_cascade_fullres)")
+    parser.add_argument("--fold", type=int, default=1, choices=[0,1,2,3,4],
+                       help="Which fold to copy (default: 1, the best performing fold)")
     parser.add_argument("--setup_lowres", action="store_true",
-                       help="Also setup lowres model symlink for cascade compatibility")
+                       help="Also setup lowres model for cascade compatibility")
     
     args = parser.parse_args()
     
     # Set defaults based on your actual structure
     if args.source is None:
-        nnunet_results = os.environ.get('nnUNet_results', '/hdd/data/stanford_data/skmtea/nnunet_data/nnUNet_results')
+        nnunet_results = os.environ.get('nnUNet_results', '/dataNAS/people/aagatti/projects/knee_pipeline_nnunet/nnunet_data/nnUNet_results')
         args.source = f"{nnunet_results}/Dataset500_KneeMRI/nnUNetTrainer__nnUNetResEncUNetMPlans__3d_cascade_fullres"
     
     if args.dest is None:
@@ -140,12 +183,16 @@ def main():
     
     try:
         # Copy cascade fullres model
-        copied, skipped = copy_minimal_model_files(args.source, args.dest)
+        copied, skipped = copy_minimal_model_files(args.source, args.dest, fold=args.fold)
         
-        # Setup lowres symlink if requested
+        # Create config file for cascade
+        config_file = create_model_config(Path(args.dest), args.fold, 'cascade')
+        print(f"  ✅ Model config created with fold {args.fold} info")
+        
+        # Setup lowres if requested
         if args.setup_lowres:
             print()
-            lowres_success = copy_lowres_for_cascade()
+            lowres_success = copy_lowres_for_cascade(fold=args.fold)
             if not lowres_success:
                 print("⚠️  Lowres setup failed, but cascade model copied successfully.")
         
@@ -159,7 +206,7 @@ def main():
             print(f"\n🎉 Minimal model copy complete!")
             print(f"📁 Cascade model ready at: {args.dest}")
             if args.setup_lowres:
-                print(f"📁 Lowres symlink created for cascade compatibility")
+                print(f"📁 Lowres model copied for cascade compatibility")
             print(f"\nNext step: python test_inference.py")
             return 0
             

@@ -67,10 +67,34 @@ def test_model_files():
     base_dir = Path(__file__).parent
     model_dir = base_dir / "huggingface" / "models" / "Dataset500_KneeMRI" / "nnUNetTrainer__nnUNetResEncUNetMPlans__3d_cascade_fullres"
     
+    # Try to read config file to determine which fold was deployed
+    config_file = model_dir / "model_config.json"
+    deployed_fold = None
+    if config_file.exists():
+        try:
+            import json
+            with open(config_file) as f:
+                config = json.load(f)
+            deployed_fold = config.get('model_info', {}).get('fold')
+            print(f"📝 Config found: Fold {deployed_fold}")
+        except Exception as e:
+            print(f"⚠️  Could not read config: {e}")
+    
+    # Auto-detect which fold exists if config not found
+    if deployed_fold is None:
+        fold_dirs = list(model_dir.glob("fold_*"))
+        if fold_dirs:
+            deployed_fold = int(fold_dirs[0].name.split('_')[1])
+            print(f"📁 Auto-detected fold: {deployed_fold}")
+        else:
+            print("❌ No fold directories found")
+            return False
+    
+    # Check required files
     required_files = [
         "plans.json",
         "dataset.json", 
-        "fold_0/checkpoint_best.pth"
+        f"fold_{deployed_fold}/checkpoint_best.pth"
     ]
     
     all_found = True
@@ -83,12 +107,22 @@ def test_model_files():
             print(f"❌ {file_path} (missing)")
             all_found = False
     
-    # Check lowres symlink
+    # Check lowres model
     lowres_dir = base_dir / "huggingface" / "models" / "Dataset500_KneeMRI" / "nnUNetTrainer__nnUNetResEncUNetMPlans__3d_lowres"
-    if lowres_dir.exists() and lowres_dir.is_symlink():
-        print(f"✅ Lowres symlink -> {lowres_dir.readlink()}")
+    lowres_config = lowres_dir / "model_config.json"
+    if lowres_config.exists():
+        try:
+            import json
+            with open(lowres_config) as f:
+                lowres_conf = json.load(f)
+            lowres_fold = lowres_conf.get('model_info', {}).get('fold')
+            print(f"✅ Lowres model: fold {lowres_fold}")
+        except:
+            print("⚠️  Lowres config found but could not read")
+    elif lowres_dir.exists():
+        print(f"✅ Lowres model exists (no config)")
     else:
-        print("⚠️  Lowres symlink not found")
+        print("⚠️  Lowres model not found")
     
     return all_found
 

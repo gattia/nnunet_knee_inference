@@ -5,6 +5,9 @@ huggingface/test_data/
 !huggingface/test_data/.gitkeep
 huggingface/README.md
 huggingface/config.json
+huggingface/dataset.json
+huggingface/plans.json
+huggingface/.gitattributes
 # Keep the documentation about HuggingFace files (now at root)
 # HUGGINGFACE_SETUP.md is tracked at root level
 !huggingface/.gitkeep

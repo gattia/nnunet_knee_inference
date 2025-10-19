@@ -18,9 +18,40 @@ class KneeSegmentationInference:
     def __init__(self, model_dir=None):
         self.model_dir = Path(model_dir) if model_dir else Path(__file__).parent.parent / "huggingface" / "models" / "Dataset500_KneeMRI" / "nnUNetTrainer__nnUNetResEncUNetMPlans__3d_cascade_fullres"
         
+        # Auto-detect which fold to use from config file
+        self.fold = self._detect_fold()
+        
         # No label remapping - output sequential nnU-Net labels (0-9) as trained
         
         self._check_setup()
+    
+    def _detect_fold(self):
+        """Auto-detect which fold was deployed by reading config file."""
+        import json
+        
+        # Try to read config from cascade model
+        config_file = self.model_dir / "model_config.json"
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config = json.load(f)
+                fold = config.get('model_info', {}).get('fold')
+                if fold is not None:
+                    print(f"📝 Using fold {fold} from config")
+                    return fold
+            except Exception as e:
+                print(f"⚠️  Could not read config: {e}")
+        
+        # Fallback: auto-detect from folder structure
+        fold_dirs = list(self.model_dir.glob("fold_*"))
+        if fold_dirs:
+            fold = int(fold_dirs[0].name.split('_')[1])
+            print(f"📁 Auto-detected fold {fold} from directory")
+            return fold
+        
+        # Default fallback
+        print("⚠️  Could not detect fold, using default fold 1")
+        return 1
     
     def _check_setup(self):
         """Check if nnU-Net and model are available."""
@@ -68,7 +99,7 @@ class KneeSegmentationInference:
             temp_lowres.mkdir()
             
             # Step 1: Run 3d_lowres prediction first
-            print("🔄 Running 3d_lowres prediction...")
+            print(f"🔄 Running 3d_lowres prediction (fold {self.fold})...")
             cmd_lowres = [
                 'nnUNetv2_predict',
                 '-i', str(temp_input),
@@ -77,7 +108,7 @@ class KneeSegmentationInference:
                 '-tr', 'nnUNetTrainer',
                 '-p', 'nnUNetResEncUNetMPlans',
                 '-c', '3d_lowres',
-                '-f', '0',
+                '-f', str(self.fold),
                 '-chk', 'checkpoint_best.pth',
                 '--disable_tta',
                 '-device', 'cuda'
@@ -88,7 +119,7 @@ class KneeSegmentationInference:
                 raise RuntimeError(f"3d_lowres prediction failed: {result.stderr}")
             
             # Step 2: Run 3d_cascade_fullres with lowres predictions
-            print("🔄 Running 3d_cascade_fullres prediction...")
+            print(f"🔄 Running 3d_cascade_fullres prediction (fold {self.fold})...")
             cmd_fullres = [
                 'nnUNetv2_predict',
                 '-i', str(temp_input),
@@ -97,7 +128,7 @@ class KneeSegmentationInference:
                 '-tr', 'nnUNetTrainer',
                 '-p', 'nnUNetResEncUNetMPlans',
                 '-c', '3d_cascade_fullres',
-                '-f', '0',
+                '-f', str(self.fold),
                 '-chk', 'checkpoint_best.pth',
                 '-prev_stage_predictions', str(temp_lowres),
                 '--disable_tta',

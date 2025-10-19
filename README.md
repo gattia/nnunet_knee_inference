@@ -2,7 +2,7 @@
 
 Portable inference package for knee MRI segmentation using nnU-Net cascade architecture.
 
-**Performance**: 0.906 mean Dice coefficient, ~80 seconds per volume
+**Performance**: 0.924 mean Dice coefficient (fold 1, best of 5-fold CV), ~80 seconds per volume
 
 ## Quick Start
 
